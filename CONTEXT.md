@@ -25,7 +25,7 @@ Original requirements doc: `../rickshaw-search-doc.md`
 | Mobile | React Native + Expo 58 (scaffolded in `../rickshaw-book-mobile-app`, default template, no navigation yet) |
 | Backend | NestJS 11 + TypeScript (`this repo`) |
 | Database | PostgreSQL on **Neon** (dev DB `rickshaw-ride-development`, URL in `.env`) |
-| ORM | **Prisma 7** — new `prisma-client` generator, output `src/generated/prisma`, config in `prisma7.config.ts` (loads `.env` via dotenv) |
+| ORM | **Prisma 7** — new `prisma-client` generator, output `src/generated/prisma`, config in `prisma7.config.ts` (loads `.env` via dotenv); runtime connects via **`@prisma/adapter-pg`** driver adapter |
 | Auth (planned) | JWT access (15m) + refresh (30d), Google idToken verification (`google-auth-library`), hashed OTP codes, SMS provider interface (Twilio or BD gateway; dev mode logs codes) |
 | Realtime (planned) | None in v1 — drivers POST location heartbeat every ~10 s, passengers poll `GET /drivers/nearby` every ~10 s |
 
@@ -39,7 +39,10 @@ rickshaw-ride-app/
     ├── prisma7.config.ts         # Prisma 7 config (schema path, migrations path, DATABASE_URL)
     ├── prisma/schema.prisma      # database design (source of truth)
     ├── prisma/migrations/        # auto-generated only — NEVER hand-edit
-    └── src/                      # still default Nest scaffold (app.controller/service/module)
+    └── src/
+        ├── prisma/               # global PrismaModule + PrismaService (pg adapter)
+        ├── generated/prisma/     # Prisma 7 generated client (do not edit)
+        └── app.*                 # default Nest scaffold
 ```
 
 ## 5. Database design (implemented — migration `20261119154121_init` applied to Neon)
@@ -81,9 +84,10 @@ Done:
 - [x] NestJS 11 scaffolded, Prisma 7 set up (`prisma7.config.ts` + Neon dev DB)
 - [x] Full database schema in `prisma/schema.prisma` (see section 5)
 - [x] Init migration auto-generated and applied; schema ↔ DB verified in sync
+- [x] PrismaService module (`src/prisma/`) — global `PrismaModule`, `PrismaService extends PrismaClient` with `PrismaPg` adapter (`DATABASE_URL` via ConfigService), `$connect`/`$disconnect` lifecycle hooks. Verified: app boots, live count queries against Neon succeed. (Removed leftover `@prisma/adapter-better-sqlite3` — wrong engine; installed `@prisma/adapter-pg`.)
+- [x] API setup (`src/main.ts`) — global prefix `api/v1`, ValidationPipe (whitelist + forbidNonWhitelisted + transform), CORS, shutdown hooks, global `AllExceptionsFilter` (`src/common/filters/`) with consistent error JSON + Prisma P2002→409 / P2025→404 mapping, Swagger UI at `/api/docs` (`@nestjs/swagger@11` — v12 needs Nest 12), `GET /api/v1/health` (pings DB). `PORT=3000` in `.env`. Verified live: health ok, docs 200, 404 shape consistent.
 
 In progress / not started:
-- [ ] PrismaService module (`src/prisma/`) — PrismaClient with driver adapter, global module
 - [ ] Auth module: `POST /auth/google` (idToken verify), `POST /auth/otp/request` + `/verify`, `POST /auth/refresh`, JWT guard
 - [ ] Onboarding: `POST /onboarding` (role + name; creates DriverProfile for drivers — phone required for drivers since passengers call them)
 - [ ] Users: `GET /me`, `PATCH /me`
@@ -110,6 +114,8 @@ GET  /drivers/nearby?lat=&lng=                            (passenger only)
 
 - **Never hand-edit migration SQL.** Change `prisma/schema.prisma`, then run `npx prisma migrate dev --name <change>`. Saved in taste.
 - Dev DB is the Neon `rickshaw-ride-development` database — safe to reset while empty.
+- **Env gotcha:** this machine has `NODE_ENV=production` + npm `omit=dev`, so plain `npm install` drops dev deps. Always use `npm install --include=dev`.
+- **No test files** — do not create/maintain `*.spec.ts`; verify with `npm run build` + eslint instead. Saved in taste. (Scaffold `app.controller.spec.ts` deleted.)
 
 ## 9. Key commands (run inside `rickshaw-ride-backend/`)
 
